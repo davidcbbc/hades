@@ -1,0 +1,9 @@
+.venv/*
+.env
+navs/*
+streamlit/.venv/*
+news_data.json
+watchlists.json
+shots/*
+results/*
+*/.venv/*
