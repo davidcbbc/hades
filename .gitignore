@@ -1,9 +1,40 @@
-.venv/*
+# Secrets and local environment
 .env
-navs/*
-streamlit/.venv/*
+.env.*
+!.env.example
+
+# Python virtual environments
+.venv/
+*/.venv/
+venv/
+
+# Python cache/build artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Streamlit/local app state
+.streamlit/secrets.toml
+
+# Local runtime outputs
 news_data.json
 watchlists.json
-shots/*
-results/*
-*/.venv/*
+shots/
+results/
+post_monitor_yolo_resources/screenshots/
+navs/
+
+# Logs and OS/editor noise
+*.log
+.DS_Store
+Thumbs.db

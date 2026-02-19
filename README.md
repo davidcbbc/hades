@@ -1,60 +1,172 @@
-# Hades TOR Post Monitor
+# Hades
 
-## Overview
-`posts_monitor_instructed_tor2.py` drives a Browser Use agent (Gemini Flash via Azure OpenAI) through a TOR-enabled Chromium session to find the newest breach-related posts on a target site. The agent extracts structured metadata, captures full-page evidence, and stores results locally for both one-off runs and continuous monitoring.
+AI-assisted post monitoring toolkit with:
+- CLI crawlers for breach/vulnerability discussions
+- a Streamlit dashboard for triage and exports
+- optional watchlist webhook alerts and MISP export
 
-## Key Features
-- Navigates a provided domain (including subdomains) and asks the LLM agent to surface the three newest breach discussions.
-- Captures evidence screenshots with a custom `maybe_capture_screenshot` tool that saves base64 payloads to `./shots/`.
-- Persists each post to a rolling JSON log (`news_data.json`) with URL-based deduplication.
-- Supports deterministic navigation hints via an optional instruction file.
-- Offers verbose/headful mode for debugging alongside quiet headless operation for scheduled monitoring.
+## What Is In This Repo
+
+- `posts_monitor_yolo.py`: breach-focused crawler (top 3 recent posts)
+- `posts_monitor_instructed.py`: breach-focused crawler with optional `--nav_prompt` guidance
+- `posts_monitor_yolo_vulns.py`: vulnerability/exploit-focused crawler
+- `posts_monitor_yolo_tor.py`: breach crawler routed through Tor SOCKS proxy
+- `posts_monitor_instructed_tor.py`: instructed crawler routed through Tor SOCKS proxy
+- `streamlit/app.py`: main dashboard (KPIs + sentiment + latest discoveries)
+- `streamlit/pages/02_Launch_Scan.py`: run supported crawler scripts from UI
+- `streamlit/pages/03_Crawled_Websites.py`: breach-related filtered posts
+- `streamlit/pages/04_Vulnerabilities.py`: vulnerability-related filtered posts
+- `streamlit/pages/04_Watchlists_Alerts.py`: keyword watchlists + webhook alerts
+- `streamlit/utils.py`: data loading/filtering + MISP/webhook helpers
 
 ## Requirements
-- Python 3.10+ with access to the project's dependencies (`browser-use`, `python-dotenv`, `python-dateutil`, `pydantic`, etc.).
-- A running TOR SOCKS proxy on `localhost:9050` (adjust the code if your proxy uses another port).
-- Azure OpenAI configuration for the `browser_use.llm.ChatAzureOpenAI` client (API key, endpoint, deployment name); define these in a `.env` file loaded at startup.
 
-## Configuration
-1. Create a `.env` file alongside the script and populate the Azure OpenAI variables expected by `ChatAzureOpenAI` (for example `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT`).
-2. Ensure the TOR proxy is reachable at `localhost:9050`. The browser session also disables DNS leaks and bypasses only loopback traffic.
-3. (Optional) Prepare a navigation prompt text file that lists deterministic steps the agent should follow before free-form analysis.
+- Python `>=3.12` (from `pyproject.toml`)
+- dependencies from `uv.lock` / `pyproject.toml`
+- Browser Use compatible browser runtime
+- For Tor scripts: local SOCKS proxy on `localhost:9050`
 
-## Usage
-Run the script directly from the repo root:
+## Setup
+
+### 1) Install dependencies
+
+Using `uv`:
 
 ```bash
-python posts_monitor_instructed_tor2.py [--url TARGET_URL] [--once] [--interval SECONDS] \
-  [--output PATH] [--debug] [--nav_prompt FILE]
+uv sync
 ```
 
-- `--url`: Site root to investigate (default `https://www.techcrunch.com`).
-- `--once`: Perform a single sweep and exit; omit for continuous monitoring.
-- `--interval`: Seconds between scans when monitoring (default `300`).
-- `--output`: JSON file that stores extracted posts (default `news_data.json`).
-- `--debug`: Enables Browser Use logging, headful Chromium, and verbose console output.
-- `--nav_prompt`: Injects navigation instructions from a text file before the agent begins free-form exploration.
+Using `pip`:
 
-### Single Extraction
 ```bash
-python posts_monitor_instructed_tor2.py --once --url https://example.com/forum --debug
+python -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+pip install browser-use streamlit pandas python-dateutil python-dotenv requests pydantic
 ```
-Prints a status line for the newest post, writes a screenshot to `./shots/`, and saves the record in `news_data.json`.
 
-### Continuous Monitoring
+### 2) Configure environment
+
+Create `.env` in project root. Common keys used by this project:
+
 ```bash
-python posts_monitor_instructed_tor2.py --url https://example.com/forum --interval 600
-```
-Loops forever, only displaying and persisting posts whose URLs were not seen previously.
+# LLM/provider keys (as needed by your selected model/provider)
+AZURE_OPENAI_API_KEY=
+AZURE_OPENAI_ENDPOINT=
+AZURE_ENDPOINT=
+OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+GOOGLE_API_KEY=
+GROQ_API_KEY=
 
-## Output Layout
-- `news_data.json`: Rolling log of the most recent 100 posts; each entry includes a URL hash, timestamp, and the agent's structured payload.
-- `./shots/`: Evidence screenshots named after the post URL (or a provided filename).
+# Optional logging controls
+BROWSER_USE_LOGGING_LEVEL=info
+ANONYMIZED_TELEMETRY=false
+
+# Optional MISP integration (Streamlit export button)
+MISP_URL=
+MISP_API_KEY=
+MISP_DISTRIBUTION=0
+MISP_ANALYSIS=2
+MISP_THREAT_LEVEL=4
+MISP_TIMEOUT=10
+MISP_VERIFY_SSL=true
+MISP_TAGS=
+
+# Optional watchlist webhook settings
+WATCHLIST_WEBHOOK_TIMEOUT=10
+WATCHLIST_WEBHOOK_VERIFY_SSL=true
+```
+
+## CLI Usage
+
+All monitor scripts support:
+
+```bash
+python <script>.py --url <target> [--once] [--interval 300] [--output news_data.json] [--debug]
+```
+
+Extra option for instructed variants:
+
+```bash
+--nav_prompt <path_to_text_file>
+```
+
+### Examples
+
+Single run:
+
+```bash
+python posts_monitor_yolo.py --url https://example.com/forum --once --debug
+```
+
+Continuous mode:
+
+```bash
+python posts_monitor_instructed.py --url https://example.com/forum --interval 600
+```
+
+Tor-routed run:
+
+```bash
+python posts_monitor_yolo_tor.py --url https://example.com/forum --once
+```
+
+Vulnerability-focused run:
+
+```bash
+python posts_monitor_yolo_vulns.py --url https://example.com/forum --once
+```
+
+## Streamlit App
+
+Run from repo root:
+
+```bash
+streamlit run streamlit/app.py
+```
+
+### Pages
+
+- Dashboard: high-level KPIs and recent posts
+- Launch Scan: UI wrapper for `posts_monitor_yolo.py` and `posts_monitor_instructed.py`
+- Breached Data: breach/leak keyword filtering + screenshot preview + MISP export
+- Vulnerabilities: vuln/exploit keyword filtering + screenshot preview + MISP export
+- Watchlists & Alerts: create keyword lists, view matches, send webhook alerts
+
+## Data Files
+
+- `news_data.json`: rolling store (last 100 saved records)
+- `shots/`: screenshots captured by crawler tools
+- `watchlists.json`: persisted watchlist config
+
+Expected `news_data.json` item shape:
+
+```json
+{
+  "hash": "<md5(url)>",
+  "pulled_at": "2026-02-19T00:00:00Z",
+  "data": {
+    "title": "...",
+    "author": "...",
+    "url": "...",
+    "posting_time": "...",
+    "short_summary": "...",
+    "long_summary": "...",
+    "sentiment": "positive|neutral|negative",
+    "screenshot_path": "..."
+  }
+}
+```
+
+## Security Notes
+
+
+- Tor scripts assume `localhost:9050`; change script args if your Tor endpoint differs.
 
 ## Troubleshooting
-- **Empty or malformed JSON**: Enable `--debug` to inspect the agent transcript. The script already strips backticks and `<json>` tags before parsing, but unforeseen formats may still need manual cleanup.
-- **Connection errors**: Confirm your TOR proxy port and that outbound access through it is permitted.
-- **Agent navigation loops**: Provide a concise nav prompt file to anchor the agent before it explores freely.
 
-## Extending
-If you need to change the extraction logic, focus on `extract_latest_article()`. It assembles the agent prompt, runs the Browser Use session, and normalizes the LLM output before handing results to the CLI helpers.
+- If parsing fails, run with `--debug` to inspect raw model output.
+- If Streamlit shows no data, verify `news_data.json` exists and is valid JSON.
+- If MISP export fails, verify `MISP_URL` and `MISP_API_KEY`.
+- If webhook alerts fail, validate webhook URL and SSL settings.

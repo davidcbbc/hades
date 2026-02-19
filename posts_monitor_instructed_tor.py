@@ -47,6 +47,7 @@ parser.add_argument('--interval', type=int, default=300, help='Seconds between c
 parser.add_argument('--once', action='store_true', help='Run a single extraction and exit')
 parser.add_argument('--output', default='news_data.json', help='Path to JSON file where articles are stored')
 parser.add_argument('--debug', action='store_true', help='Verbose console output and non-headless browser')
+parser.add_argument('--nav_prompt', help='Path to a text file with navigation steps to prepend to the Agent task')
 args = parser.parse_args()
 
 setup_environment(args.debug)
@@ -159,10 +160,25 @@ async def extract_latest_article(site_url: str, debug: bool = False) -> dict:
 
 	Keep it crisp;. Be decisive.
 	"""
+	nav_block = ""
+	if getattr(args, "nav_prompt", None):
+		try:
+			with open(args.nav_prompt, "r", encoding="utf-8") as f:
+				steps_text = f.read().strip()
+			if steps_text:
+				nav_block = (
+					"FOLLOW THESE NAVIGATION STEPS FIRST (verbatim):\n"
+					f"{steps_text}\n\n"
+					"Then proceed with analysis.\n\n"
+				)
+		except Exception as e:
+			if debug:
+				print(f"[DEBUG] Could not read --nav_prompt file: {e}")
 
 	shots = Path("post_monitor_yolo_resources") / "screenshots"
 
 	prompt = (
+		nav_block +
 		f'Navigate to {site_url} and find the top 3 most recent posts (based on the creation date) related to data breaches.'
 		f"Click on it to open the full post page. Once loaded the Post, call `maybe_capture_screenshot`, scroll & extract ALL required information: "
 		f'1. title: The article headline '
